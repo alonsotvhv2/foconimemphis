@@ -1,0 +1,16 @@
+{
+  "name": "gestor-tareas-crud",
+  "version": "1.0.0",
+  "description": "Aplicación CRUD para gestionar tareas usando Node.js, Express y SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite": "^5.0.1",
+    "sqlite3": "^5.1.6"
+  },
+  "author": "",
+  "license": "ISC"
+}
