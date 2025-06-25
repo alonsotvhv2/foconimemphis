@@ -71,3 +71,7 @@ th {
 .delete-btn:hover {
     background-color: #da190b;
 }
+#loading {
+    color: #666;
+    font-style: italic;
+}
