@@ -1,25 +1,21 @@
-let db;
 let editId = null;
 
-const DB_NAME = 'TaskDB';
-const STORE_NAME = 'tasks';
-const DB_VERSION = 1;
-
-function openDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-            db = request.result;
-            resolve(db);
-        };
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-            }
-        };
-    });
+async function checkDatabase() {
+    try {
+        const response = await fetch('/api/check-db');
+        const result = await response.json();
+        const message = result.success
+            ? `La base de datos SQLite está conectada y la tabla "tasks" existe.`
+            : `Error: ${result.error}`;
+        console.log(message);
+        document.getElementById('dbStatus').textContent = message;
+        return result.success;
+    } catch (error) {
+        const errorMessage = `Error al verificar la base de datos: ${error.message}`;
+        console.error(errorMessage);
+        document.getElementById('dbStatus').textContent = errorMessage;
+        return false;
+    }
 }
 
 async function renderTasks() {
@@ -29,32 +25,22 @@ async function renderTasks() {
     taskBody.innerHTML = '';
 
     try {
-        if (!db) await openDB();
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.getAll();
-
-        request.onsuccess = () => {
-            const tasks = request.result;
-            tasks.forEach((task) => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${task.task}</td>
-                    <td>
-                        <button class="edit-btn" onclick="editTask(${task.id})">Editar</button>
-                        <button class="delete-btn" onclick="deleteTask(${task.id})">Eliminar</button>
-                    </td>
-                `;
-                taskBody.appendChild(row);
-            });
-            loading.style.display = 'none';
-        };
-        request.onerror = () => {
-            alert('Error al cargar las tareas.');
-            loading.style.display = 'none';
-        };
+        const response = await fetch('/api/tasks');
+        const tasks = await response.json();
+        tasks.forEach((task) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${task.task}</td>
+                <td>
+                    <button class="edit-btn" onclick="editTask(${task.id})">Editar</button>
+                    <button class="delete-btn" onclick="deleteTask(${task.id})">Eliminar</button>
+                </td>
+            `;
+            taskBody.appendChild(row);
+        });
+        loading.style.display = 'none';
     } catch (error) {
-        alert('Error al conectar con la base de datos.');
+        alert('Error al cargar las tareas.');
         loading.style.display = 'none';
     }
 }
@@ -68,52 +54,40 @@ async function addOrUpdateTask() {
     }
 
     try {
-        if (!db) await openDB();
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
+        const method = editId === null ? 'POST' : 'PUT';
+        const url = editId === null ? '/api/tasks' : `/api/tasks/${editId}`;
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task })
+        });
 
-        const taskObj = { task };
-        let request;
-
-        if (editId === null) {
-            request = store.add(taskObj);
-        } else {
-            taskObj.id = editId;
-            request = store.put(taskObj);
-        }
-
-        request.onsuccess = () => {
+        if (response.ok) {
             taskInput.value = '';
             editId = null;
             document.getElementById('addBtn').textContent = 'Agregar';
             document.getElementById('cancelBtn').style.display = 'none';
             renderTasks();
-        };
-        request.onerror = () => alert('Error al guardar la tarea.');
+        } else {
+            alert('Error al guardar la tarea.');
+        }
     } catch (error) {
-        alert('Error al conectar con la base de datos.');
+        alert('Error al conectar con el servidor.');
     }
 }
 
 async function editTask(id) {
     try {
-        if (!db) await openDB();
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.get(id);
-
-        request.onsuccess = () => {
-            const task = request.result;
-            if (task) {
-                document.getElementById('taskInput').value = task.task;
-                editId = id;
-                document.getElementById('addBtn').textContent = 'Actualizar';
-                document.getElementById('cancelBtn').style.display = 'inline';
-            }
-        };
-        request.onerror = () => alert('Error al cargar la tarea.');
+        const response = await fetch(`/api/tasks/${id}`);
+        const task = await response.json();
+        if (task) {
+            document.getElementById('taskInput').value = task.task;
+            editId = id;
+            document.getElementById('addBtn').textContent = 'Actualizar';
+            document.getElementById('cancelBtn').style.display = 'inline';
+        }
     } catch (error) {
-        alert('Error al conectar con la base de datos.');
+        alert('Error al cargar la tarea.');
     }
 }
 
@@ -121,15 +95,14 @@ async function deleteTask(id) {
     if (!confirm('¿Está seguro de eliminar esta tarea?')) return;
 
     try {
-        if (!db) await openDB();
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete(id);
-
-        request.onsuccess = () => renderTasks();
-        request.onerror = () => alert('Error al eliminar la tarea.');
+        const response = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            renderTasks();
+        } else {
+            alert('Error al eliminar la tarea.');
+        }
     } catch (error) {
-        alert('Error al conectar con la base de datos.');
+        alert('Error al conectar con el servidor.');
     }
 }
 
@@ -140,4 +113,7 @@ function cancelEdit() {
     document.getElementById('cancelBtn').style.display = 'none';
 }
 
-document.addEventListener('DOMContentLoaded', renderTasks);
+document.addEventListener('DOMContentLoaded', () => {
+    renderTasks();
+    checkDatabase();
+});
